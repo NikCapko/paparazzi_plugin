@@ -1,0 +1,84 @@
+<idea-plugin url="https://www.jetbrains.com/idea">
+    <id>com.nikcapko.paparazzi</id>
+
+    <name>Paparazzi</name>
+
+    <vendor email="nik.capko@mail.ru">NikCapko</vendor>
+
+    <version>1.0</version>
+
+    <idea-version since-build="231" until-build="254.*"/>
+
+    <change-notes>
+
+    </change-notes>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.java</depends>
+    <depends>org.jetbrains.kotlin</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+
+        <!-- Tool Window — боковая панель -->
+        <toolWindow
+                id="Paparazzi"
+                secondary="false"
+                anchor="bottom"
+                factoryClass="com.nikcapko.paparazzi.PaparazziToolWindowFactory"
+        />
+
+        <!-- Сервис для хранения состояния (список тестов, статусы) -->
+        <!--        <projectService-->
+        <!--                serviceImplementation="com.nikcapko.paparazzi.PaparazziTestRegistry"-->
+        <!--        />-->
+
+        <!-- Стартовая активность — первичное сканирование при открытии проекта -->
+        <postStartupActivity
+                implementation="com.nikcapko.paparazzi.PaparazziStartupActivity"
+        />
+
+        <!-- Слушатель изменений файлов — реиндексация при редактировании тестов -->
+        <!--        <fileDocumentManagerListener-->
+        <!--                implementation="com.nikcapko.paparazzi.PaparazziFileListener"-->
+        <!--        />-->
+
+    </extensions>
+
+    <actions>
+        <!-- Группа кнопок в тулбаре Tool Window -->
+        <group id="Paparazzi.ToolbarActions" text="Paparazzi" popup="false">
+
+            <action
+                    id="Paparazzi.RunSelected"
+                    class="com.nikcapko.paparazzi.RunSelectedTestAction"
+                    text="Run Selected Test"
+                    icon="AllIcons.Actions.Execute"
+            />
+
+            <action
+                    id="Paparazzi.RunAll"
+                    class="com.nikcapko.paparazzi.RunAllTestsAction"
+                    text="Run All Paparazzi Tests"
+                    icon="AllIcons.Actions.RunAll"
+            />
+
+            <action
+                    id="Paparazzi.ReRecord"
+                    class="com.nikcapko.paparazzi.ReRecordAction"
+                    text="Re-record Snapshots"
+                    icon="AllIcons.Actions.Refresh"
+            />
+
+            <separator/>
+
+            <action
+                    id="Paparazzi.Refresh"
+                    class="com.nikcapko.paparazzi.RefreshTestsAction"
+                    text="Refresh Test List"
+                    icon="AllIcons.Actions.ForceRefresh"
+            />
+
+        </group>
+    </actions>
+
+</idea-plugin>
