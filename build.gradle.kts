@@ -18,15 +18,3 @@ dependencies {
         bundledPlugins("org.jetbrains.kotlin")
     }
 }
-
-intellijPlatform {
-    pluginConfiguration {
-        group = "com.nikcapko"
-        version = "1.0"
-
-        ideaVersion {
-            sinceBuild = "231"
-            untilBuild = "254.*"
-        }
-    }
-}
