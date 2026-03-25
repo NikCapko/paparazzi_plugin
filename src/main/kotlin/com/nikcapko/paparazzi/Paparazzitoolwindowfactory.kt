@@ -226,7 +226,7 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
                 val images = diffs.map { it.first }
                 val labels = diffs.map { it.second }
 
-                deltaPanel.add(createColumnedImagePanel(images, labels, scaleFactor))
+                deltaPanel.add(createScrollableImagePanelWithLabels(images, labels, scaleFactor))
                 deltaPanel.isVisible = true
             } else {
                 deltaPanel.add(JLabel("No diff images found", SwingConstants.CENTER))
@@ -317,28 +317,34 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
         labels: List<String>,
         scale: Double
     ): JScrollPane {
-        val container = JPanel(FlowLayout(FlowLayout.LEFT, 5, 5))
+        // Контейнер для всех картинок — вертикально
+        val container = JPanel()
+        container.layout = BoxLayout(container, BoxLayout.Y_AXIS)
+        container.alignmentX = LEFT_ALIGNMENT
 
         images.forEachIndexed { idx, img ->
+            // Панель для одного скрина + подписи
             val panel = JPanel()
             panel.layout = BoxLayout(panel, BoxLayout.Y_AXIS)
             panel.alignmentX = LEFT_ALIGNMENT
+            panel.border = BorderFactory.createEmptyBorder(5, 5, 5, 5) // отступы
 
             val w = (img.width * scale).toInt()
             val h = (img.height * scale).toInt()
+
+            val text = labels.getOrNull(idx) ?: "Screenshot"
+            val textLabel = JLabel(text, SwingConstants.CENTER)
+            textLabel.alignmentX = CENTER_ALIGNMENT
+            panel.add(textLabel)
+            panel.add(Box.createVerticalStrut(5)) // расстояние между надписью и картинкой
 
             // Картинка
             val imageLabel = JLabel(ImageIcon(img.getScaledInstance(w, h, BufferedImage.SCALE_SMOOTH)))
             imageLabel.alignmentX = CENTER_ALIGNMENT
             panel.add(imageLabel)
 
-            // Подпись
-            val text = labels.getOrNull(idx) ?: "Screenshot"
-            val captionLabel = JLabel(text, SwingConstants.CENTER)
-            captionLabel.alignmentX = CENTER_ALIGNMENT
-            panel.add(captionLabel)
-
             container.add(panel)
+            container.add(Box.createVerticalStrut(10)) // расстояние между скриншотами
         }
 
         val scrollPane = JScrollPane(container)

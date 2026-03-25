@@ -7,6 +7,11 @@ import com.intellij.openapi.externalSystem.service.execution.ProgressExecutionMo
 import com.intellij.openapi.externalSystem.task.TaskCallback
 import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
 import com.intellij.openapi.project.Project
+import org.w3c.dom.Element
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import javax.xml.parsers.DocumentBuilderFactory
 
 object PaparazziGradleRunner {
 
@@ -48,7 +53,7 @@ object PaparazziGradleRunner {
 
         val settings = ExternalSystemTaskExecutionSettings().apply {
             externalProjectPath = project.basePath
-            taskNames = listOf(":verifyPaparazziGmsDebug")  // один таск для всех тестов
+            taskNames = listOf("verifyPaparazziGmsDebug")  // один таск для всех тестов
             vmOptions = ""
             scriptParameters = ""  // если нужны extraArgs, можно добавить
             externalSystemIdString = "GRADLE"
@@ -65,12 +70,75 @@ object PaparazziGradleRunner {
                 }
 
                 override fun onFailure() {
-                    allTests.forEach { registry.setStatus(it, TestStatus.FAILED) }
+                    updateStatusesForAllModules(project)
                 }
             },
             ProgressExecutionMode.IN_BACKGROUND_ASYNC,
             false
         )
+    }
+
+    fun updateStatusesForAllModules(project: Project) {
+        val registry = project.getService(PaparazziTestRegistry::class.java)
+        val allTests = registry.allTests
+        if (allTests.isEmpty()) return
+
+        val projectRoot = Paths.get(project.basePath ?: return)
+
+        // Группируем тесты по модулю
+        val testsByModule = allTests.groupBy { it.gradleModulePath }
+
+        testsByModule.forEach { (modulePath, moduleTests) ->
+            val moduleDir = projectRoot.resolve(modulePath.removePrefix(":").replace(':', '/'))
+
+            // Проверяем стандартный путь отчетов Gradle для unit test debug
+            val reportsDir = moduleDir.resolve("build/test-results/testGmsDebugUnitTest")
+            if (!Files.exists(reportsDir)) {
+                // Если нет папки отчетов, все UNKNOWN
+                moduleTests.forEach { registry.setStatus(it, TestStatus.UNKNOWN) }
+                return@forEach
+            }
+
+            moduleTests.forEach { test ->
+                val xmlFile = reportsDir.resolve("TEST-${test.fqClassName}.xml")
+                if (!Files.exists(xmlFile)) {
+                    registry.setStatus(test, TestStatus.UNKNOWN)
+                    return@forEach
+                }
+
+                try {
+                    val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile.toFile())
+                    doc.documentElement.normalize()
+
+                    val testCases = doc.getElementsByTagName("testcase")
+                    var found = false
+                    for (i in 0 until testCases.length) {
+                        val node = testCases.item(i) as? Element ?: continue
+                        if (node.getAttribute("name").startsWith(test.methodName)) {
+                            found = true
+                            val failedNodes = node.getElementsByTagName("failure")
+                            val skippedNodes = node.getElementsByTagName("skipped")
+
+                            val status = when {
+                                failedNodes.length > 0 -> TestStatus.FAILED
+                                skippedNodes.length > 0 -> TestStatus.UNKNOWN
+                                else -> TestStatus.PASSED
+                            }
+
+                            registry.setStatus(test, status)
+                            break
+                        }
+                    }
+
+                    if (!found) {
+                        registry.setStatus(test, TestStatus.UNKNOWN)
+                    }
+                } catch (e: Exception) {
+                    registry.setStatus(test, TestStatus.UNKNOWN)
+                    e.printStackTrace()
+                }
+            }
+        }
     }
 
     /**
