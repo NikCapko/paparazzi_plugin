@@ -7,7 +7,7 @@
 
     <version>1.0</version>
 
-    <idea-version since-build="231" until-build="254.*"/>
+    <idea-version since-build="253.*" />
 
     <change-notes>
 
