@@ -7,7 +7,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import javax.imageio.ImageIO
 import kotlin.io.path.name
-import kotlin.streams.toList
 
 // ---------------------------------------------------------------------------
 // Доменная модель
@@ -80,7 +79,7 @@ data class PaparazziTest(
             .mapNotNull { path ->
                 val img = ImageIO.read(path.toFile()) ?: return@mapNotNull null
                 img to path.name
-                    .replace(baseName, "")
+                    .replace(baseName.substringBefore(methodName.replace(" ", "_")), "")
                     .replace("delta-", "")
             }
     }
@@ -100,7 +99,7 @@ data class PaparazziTest(
                 name.startsWith(baseName) && name.endsWith(".png")
             }
             ?.sortedWith { file, file1 -> file.toPath().compareTo(file1.toPath()) }
-            ?.map { it.name.replace(baseName, "") }
+            ?.map { it.name.replace(baseName.substringBefore(methodName.replace(" ", "_")), "") }
             .orEmpty()
     }
 

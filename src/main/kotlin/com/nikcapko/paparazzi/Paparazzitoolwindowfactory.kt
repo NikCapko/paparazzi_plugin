@@ -241,7 +241,7 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
     private fun createColumnedImagePanel(
         images: List<BufferedImage>,
         labels: List<String>,
-        scale: Double
+        scale: Double,
     ): JScrollPane {
 
         val container = JPanel(FlowLayout(FlowLayout.LEFT, 10, 10))
@@ -249,29 +249,29 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
         // Группируем по индексу [0], [1], ...
         val grouped = mutableMapOf<Int, MutableList<Pair<BufferedImage, String>>>()
 
+        // Разбиваем по индексу в квадратных скобках
         images.zip(labels).forEach { (img, lbl) ->
-            val match = Regex("^\\[(\\d+)]").find(lbl)
+            val match = Regex("\\[(\\d+)]").find(lbl)
             val index = match?.groupValues?.get(1)?.toIntOrNull() ?: 0
             grouped.computeIfAbsent(index) { mutableListOf() }.add(img to lbl)
         }
 
         // Сортируем колонки по индексу
-        grouped.toSortedMap().forEach { (columnIndex, items) ->
-
+        grouped.toSortedMap().forEach { (_, items) ->
             val columnPanel = JPanel()
             columnPanel.layout = BoxLayout(columnPanel, BoxLayout.Y_AXIS)
             columnPanel.alignmentY = TOP_ALIGNMENT
 
-            // ---- Картинки (вертикально) ----
-            images.forEachIndexed { index, img ->
+            // ---- Картинки (вертикально) для этой колонки ----
+            items.forEach { (img, lbl) ->
                 val imgPanel = JPanel()
                 imgPanel.layout = BoxLayout(imgPanel, BoxLayout.Y_AXIS)
-                //imgPanel.alignmentX = JPanel.CENTER_ALIGNMENT
+                imgPanel.alignmentX = LEFT_ALIGNMENT
 
                 val w = (img.width * scale).toInt()
                 val h = (img.height * scale).toInt()
 
-                val textLabel = createLabelWithWrappedText(labels[index], w)
+                val textLabel = createLabelWithWrappedText(lbl, w)
                 textLabel.alignmentX = LEFT_ALIGNMENT
                 imgPanel.add(textLabel)
 
@@ -304,8 +304,9 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     private fun createLabelWithWrappedText(text: String, maxWidth: Int): JLabel {
-        // HTML автоматически делает перенос строк
-        val htmlText = "<html><div style='width:${maxWidth}px;'>$text</div></html>"
+        // Разбиваем текст каждые 30 символов или по maxWidth
+        val wrappedText = text.chunked(30).joinToString("<br>") // <br> для HTML-переноса
+        val htmlText = "<html><div style='text-align:center; max-width:${maxWidth}px;'>$wrappedText</div></html>"
         return JLabel(htmlText, SwingConstants.CENTER)
     }
 
