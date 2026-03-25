@@ -55,10 +55,6 @@ class PaparazziFileListener : VirtualFileListener {
 // ---------------------------------------------------------------------------
 
 object PaparazziIndexer {
-
-    private const val PAPARAZZI_CLASS = "app.cash.paparazzi.Paparazzi"
-    private const val JUNIT_TEST_ANNOTATION = "org.junit.Test"
-
     // debounce: не переиндексируем чаще раза в N мс
     private val executor = AppExecutorUtil.createBoundedScheduledExecutorService("PaparazziIndexer", 1)
     private var pendingTask: ScheduledFuture<*>? = null
@@ -156,6 +152,7 @@ object PaparazziIndexer {
                     sourceFile = psiFile.virtualFile?.path?.let { Paths.get(it) }
                         ?: Paths.get(""),
                     lineNumber = lineNumber,
+                    useParametrized = ktClass.annotationEntries.firstOrNull()?.text?.contains("Parameterized") ?: false,
                 )
             }
     }

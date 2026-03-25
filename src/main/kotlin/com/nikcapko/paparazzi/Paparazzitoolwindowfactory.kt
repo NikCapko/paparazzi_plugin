@@ -9,6 +9,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.JBSplitter
 import com.intellij.ui.SearchTextField
@@ -16,6 +17,7 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
+import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.tree.TreeUtil
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -452,9 +454,9 @@ class PaparazziTreeCellRenderer(
                 icon = when (status) {
                     TestStatus.PASSED -> AllIcons.RunConfigurations.TestPassed
                     TestStatus.FAILED -> AllIcons.RunConfigurations.TestFailed
-                    TestStatus.RUNNING -> AllIcons.RunConfigurations.TestNotRan
+                    TestStatus.RUNNING -> AnimatedIcon.Default()
                     TestStatus.RECORDED -> AllIcons.Actions.Refresh
-                    TestStatus.UNKNOWN -> AllIcons.RunConfigurations.TestUnknown
+                    TestStatus.UNKNOWN -> AllIcons.RunConfigurations.TestNotRan
                 }
                 append(obj.displayName)
                 if (status == TestStatus.FAILED) {

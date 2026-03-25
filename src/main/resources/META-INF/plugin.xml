@@ -28,6 +28,7 @@
                 id="Paparazzi"
                 secondary="false"
                 anchor="bottom"
+                icon="AllIcons.Actions.Colors"
                 factoryClass="com.nikcapko.paparazzi.PaparazziToolWindowFactory"
         />
 

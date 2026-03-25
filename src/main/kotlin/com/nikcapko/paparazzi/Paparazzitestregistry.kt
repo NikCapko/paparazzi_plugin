@@ -31,6 +31,8 @@ data class PaparazziTest(
     val sourceFile: Path,
     /** строка объявления метода */
     val lineNumber: Int,
+    /** использование параметризации для запуска тестов */
+    val useParametrized: Boolean,
 ) {
     val displayName: String get() = methodName
     val className: String get() = fqClassName.substringAfterLast('.')

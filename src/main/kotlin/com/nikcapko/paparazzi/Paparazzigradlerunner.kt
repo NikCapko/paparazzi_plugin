@@ -19,7 +19,7 @@ object PaparazziGradleRunner {
             project = project,
             tests = listOf(test),
             task = verifyTask(test.gradleModulePath),
-            extraArgs = "--tests \"${test.fqClassName}.${test.methodName}[*]\""
+            extraArgs = "--tests \"${test.fqClassName}.${test.methodName}${if (test.useParametrized) "[*]" else ""}\""
         )
     }
 
