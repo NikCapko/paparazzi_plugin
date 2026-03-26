@@ -133,7 +133,53 @@ data class PaparazziTest(
 // ---------------------------------------------------------------------------
 
 @Service(Service.Level.PROJECT)
-class PaparazziTestRegistry(private val project: Project) {
+class PaparazziTestRegistry {
+
+    private val tests = mutableListOf<PaparazziTest>()
+    private val statusMap = mutableMapOf<PaparazziTest, TestStatus>()
+
+    private val listeners = mutableListOf<(List<PaparazziTest>) -> Unit>()
+    private val statusListeners = mutableListOf<(PaparazziTest) -> Unit>()
+
+    val allTests: List<PaparazziTest>
+        get() = tests.sortedWith(
+            compareBy(
+                { it.gradleModulePath },
+                { it.fqClassName },
+                { it.methodName },
+            )
+        )
+
+    fun update(newTests: List<PaparazziTest>) {
+        tests.clear()
+        tests.addAll(newTests)
+
+        // сбрасываем статусы только для новых
+        newTests.forEach {
+            statusMap.putIfAbsent(it, TestStatus.UNKNOWN)
+        }
+
+        listeners.forEach { it(newTests) }
+    }
+
+    fun setStatus(test: PaparazziTest, status: TestStatus) {
+        statusMap[test] = status
+        statusListeners.forEach { it(test) }
+    }
+
+    fun getStatus(test: PaparazziTest): TestStatus =
+        statusMap[test] ?: TestStatus.UNKNOWN
+
+    fun addListener(listener: (List<PaparazziTest>) -> Unit) {
+        listeners += listener
+    }
+
+    fun addStatusListener(listener: (PaparazziTest) -> Unit) {
+        statusListeners += listener
+    }
+}
+
+class PaparazziTestRegistry1(private val project: Project) {
 
     /** Все найденные тесты, ключ = fqClassName#methodName */
     private val _tests = mutableMapOf<String, PaparazziTest>()

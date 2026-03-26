@@ -88,8 +88,21 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
         })
     }
 
+    private val testNodes = mutableMapOf<PaparazziTest, DefaultMutableTreeNode>()
+    private val classNodes = mutableMapOf<String, DefaultMutableTreeNode>()
+    private val moduleNodes = mutableMapOf<String, DefaultMutableTreeNode>()
+
     init {
-        registry.addListener { SwingUtilities.invokeLater { rebuildTree() } }
+        registry.addListener { tests ->
+            SwingUtilities.invokeLater {
+                updateTreeStructure(tests)
+            }
+        }
+        registry.addStatusListener { test ->
+            SwingUtilities.invokeLater {
+                updateNode(test)
+            }
+        }
 
         val toolbar = createToolbar()
 
@@ -129,6 +142,73 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
     // ------------------------------------------------------------------
     // Дерево
     // ------------------------------------------------------------------
+
+    private fun updateTreeStructure(tests: List<PaparazziTest>) {
+
+        if (root.childCount == 0) {
+            // ПЕРВАЯ ИНИЦИАЛИЗАЦИЯ (важно!)
+            tests.forEach { test ->
+
+                val moduleNode = moduleNodes.getOrPut(test.gradleModulePath) {
+                    val node = DefaultMutableTreeNode(test.gradleModulePath)
+                    root.add(node)
+                    node
+                }
+
+                val classKey = "${test.gradleModulePath}:${test.fqClassName}"
+                val classNode = classNodes.getOrPut(classKey) {
+                    val node = DefaultMutableTreeNode(test.fqClassName.substringAfterLast('.'))
+                    moduleNode.add(node)
+                    node
+                }
+
+                val testNode = DefaultMutableTreeNode(test)
+                testNodes[test] = testNode
+                classNode.add(testNode)
+            }
+
+            treeModel.reload() // 🔥 один раз
+
+            TreeUtil.expandAll(tree)
+            return
+        }
+
+        val existingTests = testNodes.keys.toMutableSet()
+        val newTests = tests.toSet()
+
+        // --- УДАЛЕНИЕ ---
+        (existingTests - newTests).forEach { test ->
+            val node = testNodes.remove(test) ?: return@forEach
+            val parent = node.parent as? DefaultMutableTreeNode ?: return@forEach
+            treeModel.removeNodeFromParent(node)
+        }
+
+        // --- ДОБАВЛЕНИЕ ---
+        (newTests - existingTests).forEach { test ->
+
+            val moduleNode = moduleNodes.getOrPut(test.gradleModulePath) {
+                val node = DefaultMutableTreeNode(test.gradleModulePath)
+                treeModel.insertNodeInto(node, root, root.childCount)
+                node
+            }
+
+            val classKey = "${test.gradleModulePath}:${test.fqClassName}"
+            val classNode = classNodes.getOrPut(classKey) {
+                val node = DefaultMutableTreeNode(test.fqClassName.substringAfterLast('.'))
+                treeModel.insertNodeInto(node, moduleNode, moduleNode.childCount)
+                node
+            }
+
+            val testNode = DefaultMutableTreeNode(test)
+            testNodes[test] = testNode
+            treeModel.insertNodeInto(testNode, classNode, classNode.childCount)
+        }
+    }
+
+    private fun updateNode(test: PaparazziTest) {
+        val node = testNodes[test] ?: return
+        treeModel.nodeChanged(node)
+    }
 
     private fun rebuildTree() {
         // 1️⃣ Сохраняем текущие выделенные тесты
