@@ -300,6 +300,7 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
         referencePanel.repaint()
 
         if (registry.getStatus(test) == TestStatus.FAILED) {
+            deltaPanel.removeAll()
             val diffs = test.loadFailureDiffs(projectRoot)
 
             if (diffs.isNotEmpty()) {
@@ -313,6 +314,7 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
                 deltaPanel.isVisible = true
             }
         } else {
+            deltaPanel.removeAll()
             deltaPanel.isVisible = false
         }
 

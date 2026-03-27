@@ -75,7 +75,7 @@ data class PaparazziTest(
         return Files.list(failuresDir)
             .filter { path ->
                 val name = path.fileName.toString()
-                name.startsWith("delta-") && name.endsWith(".png")
+                name.startsWith("delta-") && name.contains(baseName) && name.endsWith(".png")
             }
             .toList()
             .mapNotNull { path ->
