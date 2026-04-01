@@ -37,14 +37,7 @@ data class PaparazziTest(
     val displayName: String get() = methodName
     val className: String get() = fqClassName.substringAfterLast('.')
 
-    /** Путь к эталонному PNG: src/test/snapshots/images/<fqClass>_<method>.png */
-//    fun referenceSnapshotPath(projectRoot: Path): Path =
-//        projectRoot
-//            .resolve(gradleModulePath.removePrefix(":").replace(':', '/'))
-//            .resolve("src/test/snapshots/images")
-//            .resolve("${fqClassName}_${methodName}.png")
-
-    fun referenceSnapshotPath(projectRoot: Path): List<Path> {
+    fun referenceSnapshots(projectRoot: Path): List<Pair<BufferedImage, String>> {
         val baseName = "${fqClassName.substringBeforeLast(".")}_${className}_${methodName.replace(" ", "_")}"
 
         val imagesDir = projectRoot
@@ -59,7 +52,10 @@ data class PaparazziTest(
                 name.startsWith(baseName) && name.endsWith(".png")
             }
             ?.sortedWith { file, file1 -> file.toPath().compareTo(file1.toPath()) }
-            ?.map { it.toPath() }
+            ?.mapNotNull {
+                val img = ImageIO.read(it.toPath().toFile()) ?: return@mapNotNull null
+                img to it.name.replace(baseName.substringBefore(methodName.replace(" ", "_")), "")
+            }
             ?: emptyList()
     }
 
@@ -84,47 +80,6 @@ data class PaparazziTest(
                     .replace(baseName.substringBefore(methodName.replace(" ", "_")), "")
                     .replace("delta-", "")
             }
-    }
-
-    fun referenceSnapshotTitles(projectRoot: Path): List<String> {
-        val baseName = "${fqClassName.substringBeforeLast(".")}_${className}_${methodName.replace(" ", "_")}"
-
-        val imagesDir = projectRoot
-            .resolve(gradleModulePath.removePrefix(":").replace(':', '/'))
-            .resolve("src/test/snapshots/images")
-            .toFile()
-
-        if (!imagesDir.exists() || !imagesDir.isDirectory) return emptyList()
-
-        return imagesDir
-            .listFiles { _, name ->
-                name.startsWith(baseName) && name.endsWith(".png")
-            }
-            ?.sortedWith { file, file1 -> file.toPath().compareTo(file1.toPath()) }
-            ?.map { it.name.replace(baseName.substringBefore(methodName.replace(" ", "_")), "") }
-            .orEmpty()
-    }
-
-    /** Путь к последнему сгенерированному PNG в build/ */
-//    fun actualSnapshotPath(projectRoot: Path): Path =
-//        projectRoot
-//            .resolve(gradleModulePath.removePrefix(":").replace(':', '/'))
-//            .resolve("build/paparazzi/images")
-//            .resolve("${fqClassName}_${methodName}.png")
-
-    fun actualSnapshotPath(projectRoot: Path): List<Path> {
-        val baseName = "${fqClassName.substringBeforeLast(".")}_${className}_${methodName.replace(" ", "_")}"
-
-        val imagesDir = projectRoot
-            .resolve(gradleModulePath.removePrefix(":").replace(':', '/'))
-            .resolve("build/paparazzi/failures")
-            .toFile()
-
-        if (!imagesDir.exists() || !imagesDir.isDirectory) return emptyList()
-
-        return imagesDir.listFiles { _, name ->
-            name.startsWith(baseName) && name.endsWith(".png")
-        }?.map { it.toPath() } ?: emptyList()
     }
 }
 
@@ -177,51 +132,4 @@ class PaparazziTestRegistry {
     fun addStatusListener(listener: (PaparazziTest) -> Unit) {
         statusListeners += listener
     }
-}
-
-class PaparazziTestRegistry1(private val project: Project) {
-
-    /** Все найденные тесты, ключ = fqClassName#methodName */
-    private val _tests = mutableMapOf<String, PaparazziTest>()
-
-    /** Статус выполнения */
-    private val _statuses = mutableMapOf<String, TestStatus>()
-
-    /** Слушатели изменений (Tool Window подписывается для перерисовки) */
-    private val listeners = mutableListOf<() -> Unit>()
-
-    val allTests: List<PaparazziTest>
-        get() = _tests.values
-            .sortedWith(
-                compareBy(
-                    { it.gradleModulePath },
-                    { it.fqClassName },
-                    { it.methodName },
-                )
-            )
-
-    fun update(tests: List<PaparazziTest>) {
-        _tests.clear()
-        tests.forEach { _tests[key(it)] = it }
-        notifyListeners()
-    }
-
-    fun setStatus(test: PaparazziTest, status: TestStatus) {
-        _statuses[key(test)] = status
-        notifyListeners()
-    }
-
-    fun getStatus(test: PaparazziTest): TestStatus =
-        _statuses[key(test)] ?: TestStatus.UNKNOWN
-
-    fun addListener(listener: () -> Unit) {
-        listeners += listener
-    }
-
-    fun removeListener(listener: () -> Unit) {
-        listeners -= listener
-    }
-
-    private fun key(t: PaparazziTest) = "${t.fqClassName}#${t.methodName}"
-    private fun notifyListeners() = listeners.forEach { it() }
 }

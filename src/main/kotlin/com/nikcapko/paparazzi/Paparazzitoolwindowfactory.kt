@@ -288,16 +288,20 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
         val test = node.userObject as? PaparazziTest ?: return
         val projectRoot = Paths.get(project.basePath ?: return)
 
-        val refPaths = test.referenceSnapshotPath(projectRoot).filter { Files.exists(it) }
-        val refImgs = refPaths.mapNotNull { ImageIO.read(it.toFile()) }
-        val refSorted = refPaths.zip(refImgs).sortedBy { it.first.fileName.toString() }.map { it.second }
+        val refs = test.referenceSnapshots(projectRoot)
+        if (refs.isNotEmpty()){
+            val images = refs.map { it.first }
+            val labels = refs.map { it.second }
 
-        val titles = test.referenceSnapshotTitles(projectRoot)
-
-        referencePanel.removeAll()
-        referencePanel.add(createColumnedImagePanel(refSorted, titles, scaleFactor))
-        referencePanel.revalidate()
-        referencePanel.repaint()
+            referencePanel.removeAll()
+            referencePanel.add(createColumnedImagePanel(images, labels, scaleFactor))
+            referencePanel.revalidate()
+            referencePanel.repaint()
+        } else {
+            referencePanel.removeAll()
+            referencePanel.revalidate()
+            referencePanel.repaint()
+        }
 
         if (registry.getStatus(test) == TestStatus.FAILED) {
             deltaPanel.removeAll()
@@ -437,37 +441,6 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
         return scrollPane
     }
 
-    private fun createScrollableImagePanel(images: List<BufferedImage>, scale: Double): JScrollPane {
-        val panel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 5))
-        images.forEach { img ->
-            val w = (img.width * scale).toInt()
-            val h = (img.height * scale).toInt()
-            val label = JLabel(ImageIcon(img.getScaledInstance(w, h, BufferedImage.SCALE_SMOOTH)))
-            panel.add(label)
-        }
-
-        val scrollPane = JScrollPane(panel)
-        scrollPane.horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
-        scrollPane.verticalScrollBarPolicy = JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED
-        scrollPane.preferredSize = Dimension(1200, 400) // высота окна (можно подгонять)
-        return scrollPane
-    }
-
-    private fun createHorizontalScrollPanel(images: List<BufferedImage>, scale: Double): JScrollPane {
-        val panel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 5))
-        images.forEach { img ->
-            val w = (img.width * scale).toInt()
-            val h = (img.height * scale).toInt()
-            val label = JLabel(ImageIcon(img.getScaledInstance(w, h, BufferedImage.SCALE_SMOOTH)))
-            panel.add(label)
-        }
-        val scrollPane = JScrollPane(panel)
-        scrollPane.horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
-        scrollPane.verticalScrollBarPolicy = JScrollPane.VERTICAL_SCROLLBAR_NEVER
-        scrollPane.preferredSize = Dimension(1200, (images.maxOfOrNull { it.height * scale } ?: 300).toInt())
-        return scrollPane
-    }
-
     // ------------------------------------------------------------------
     // Навигация к тесту
     // ------------------------------------------------------------------
@@ -489,31 +462,6 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
         return ActionManager.getInstance()
             .createActionToolbar("PaparazziToolbar", group, true)
             .also { it.targetComponent = this }
-    }
-
-    // ------------------------------------------------------------------
-    // Вспомогательные функции
-    // ------------------------------------------------------------------
-
-    /** Пиксельный diff: совпадающие пиксели → серые, различающиеся → красные */
-    private fun computeDiff(ref: BufferedImage, act: BufferedImage): BufferedImage {
-        val w = minOf(ref.width, act.width)
-        val h = minOf(ref.height, act.height)
-        val diff = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
-        for (x in 0 until w) {
-            for (y in 0 until h) {
-                val refPx = ref.getRGB(x, y)
-                val actPx = act.getRGB(x, y)
-                diff.setRGB(
-                    x, y, if (refPx == actPx) {
-                        (refPx and 0x00FFFFFF) or 0x44000000
-                    } else {
-                        0xFFFF0000.toInt()
-                    }
-                )
-            }
-        }
-        return diff
     }
 }
 
