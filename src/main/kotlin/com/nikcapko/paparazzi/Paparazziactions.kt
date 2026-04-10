@@ -1,10 +1,14 @@
 package com.nikcapko.paparazzi
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.ui.treeStructure.Tree
+import com.intellij.util.ui.tree.TreeUtil
 import java.awt.Container
+import javax.swing.JTree
+import javax.swing.SwingUtilities
 import javax.swing.tree.DefaultMutableTreeNode
 
 // ---------------------------------------------------------------------------
@@ -80,10 +84,8 @@ class RunAllTestsAction : AnAction() {
 class ReRecordAction : BasePaparazziAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        val tests = selectedTests(e).ifEmpty {
-            // Если ничего не выбрано — re-record всех
-            project.getService(PaparazziTestRegistry::class.java).allTests
-        }
+        val tests = selectedTests(e)
+        if (tests.isEmpty()) return
         PaparazziGradleRunner.reRecord(project, tests)
     }
 }
@@ -96,5 +98,35 @@ class RefreshTestsAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         PaparazziIndexer.scheduleReindex(project)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Развернуть дерево тестов
+// ---------------------------------------------------------------------------
+class ExpandAllTestsAction : AnAction(
+    /* text = */ "Expand All",
+    /* description = */"Expand all nodes",
+    /* icon = */AllIcons.Actions.Expandall,
+) {
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val tree = e.getData(PaparazziDataKeys.TREE) ?: return
+        TreeUtil.expandAll(tree)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Свернуть дерево тестов
+// ---------------------------------------------------------------------------
+class CollapseAllTestsAction : AnAction(
+    /* text = */ "Collapse All",
+    /* description = */ "Collapse all nodes",
+    /* icon = */ AllIcons.Actions.Collapseall,
+) {
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val tree = e.getData(PaparazziDataKeys.TREE) ?: return
+        TreeUtil.collapseAll(tree, 0)
     }
 }

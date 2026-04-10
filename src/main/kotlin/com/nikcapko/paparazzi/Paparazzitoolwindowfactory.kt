@@ -1,23 +1,16 @@
 package com.nikcapko.paparazzi
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.actionSystem.ActionManager
-import com.intellij.openapi.actionSystem.ActionToolbar
-import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.ui.AnimatedIcon
-import com.intellij.ui.ColoredTreeCellRenderer
-import com.intellij.ui.JBSplitter
-import com.intellij.ui.SearchTextField
-import com.intellij.ui.SimpleTextAttributes
+import com.intellij.ui.*
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
-import com.intellij.util.ui.AsyncProcessIcon
 import com.intellij.util.ui.tree.TreeUtil
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -25,9 +18,8 @@ import java.awt.FlowLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
-import java.nio.file.Files
 import java.nio.file.Paths
-import javax.imageio.ImageIO
+import java.util.*
 import javax.swing.*
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
@@ -54,7 +46,11 @@ class PaparazziToolWindowFactory : ToolWindowFactory {
 // Главная панель
 // ---------------------------------------------------------------------------
 
-class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
+object PaparazziDataKeys {
+    val TREE: DataKey<JTree> = DataKey.create("PAPARAZZI_TREE")
+}
+
+class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()), DataProvider {
 
     private val registry = project.getService(PaparazziTestRegistry::class.java)
 
@@ -139,36 +135,47 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
         rebuildTree()
     }
 
+    override fun getData(dataId: String): Any? {
+        return when {
+            PaparazziDataKeys.TREE.`is`(dataId) -> tree
+            else -> null
+        }
+    }
+
     // ------------------------------------------------------------------
     // Дерево
     // ------------------------------------------------------------------
 
     private fun updateTreeStructure(tests: List<PaparazziTest>) {
 
+        val expandedPaths = TreeUtil.collectExpandedPaths(tree)
+        val selectedPaths = tree.selectionPaths
+
         if (root.childCount == 0) {
-            // ПЕРВАЯ ИНИЦИАЛИЗАЦИЯ (важно!)
-            tests.forEach { test ->
+            tests
+                .sortedBy { it.gradleModulePath }
+                .forEach { test ->
 
-                val moduleNode = moduleNodes.getOrPut(test.gradleModulePath) {
-                    val node = DefaultMutableTreeNode(test.gradleModulePath)
-                    root.add(node)
-                    node
+                    val moduleNode = moduleNodes.getOrPut(test.gradleModulePath) {
+                        val node = DefaultMutableTreeNode(test.gradleModulePath)
+                        root.add(node)
+                        node
+                    }
+
+                    val classKey = "${test.gradleModulePath}:${test.fqClassName}"
+                    val classNode = classNodes.getOrPut(classKey) {
+                        val node = DefaultMutableTreeNode(test.fqClassName.substringAfterLast('.'))
+                        moduleNode.add(node)
+                        node
+                    }
+
+                    val testNode = DefaultMutableTreeNode(test)
+                    testNodes[test] = testNode
+                    classNode.add(testNode)
                 }
 
-                val classKey = "${test.gradleModulePath}:${test.fqClassName}"
-                val classNode = classNodes.getOrPut(classKey) {
-                    val node = DefaultMutableTreeNode(test.fqClassName.substringAfterLast('.'))
-                    moduleNode.add(node)
-                    node
-                }
-
-                val testNode = DefaultMutableTreeNode(test)
-                testNodes[test] = testNode
-                classNode.add(testNode)
-            }
-
-            treeModel.reload() // 🔥 один раз
-
+            sortAll()
+            treeModel.reload()
             TreeUtil.expandAll(tree)
             return
         }
@@ -179,31 +186,85 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
         // --- УДАЛЕНИЕ ---
         (existingTests - newTests).forEach { test ->
             val node = testNodes.remove(test) ?: return@forEach
-            val parent = node.parent as? DefaultMutableTreeNode ?: return@forEach
+            val classNode = node.parent as? DefaultMutableTreeNode ?: return@forEach
             treeModel.removeNodeFromParent(node)
+
+            // если класс пуст → удаляем
+            if (classNode.childCount == 0) {
+                val moduleNode = classNode.parent as? DefaultMutableTreeNode
+                classNodes.entries.removeIf { it.value == classNode }
+                treeModel.removeNodeFromParent(classNode)
+
+                // если модуль пуст → удаляем
+                if (moduleNode != null && moduleNode.childCount == 0) {
+                    moduleNodes.entries.removeIf { it.value == moduleNode }
+                    treeModel.removeNodeFromParent(moduleNode)
+                }
+            }
         }
 
         // --- ДОБАВЛЕНИЕ ---
-        (newTests - existingTests).forEach { test ->
+        (newTests - existingTests)
+            .sortedBy { it.gradleModulePath }
+            .forEach { test ->
 
-            val moduleNode = moduleNodes.getOrPut(test.gradleModulePath) {
-                val node = DefaultMutableTreeNode(test.gradleModulePath)
-                treeModel.insertNodeInto(node, root, root.childCount)
-                node
+                val moduleNode = moduleNodes.getOrPut(test.gradleModulePath) {
+                    val node = DefaultMutableTreeNode(test.gradleModulePath)
+                    treeModel.insertNodeInto(node, root, root.childCount)
+                    node
+                }
+
+                val classKey = "${test.gradleModulePath}:${test.fqClassName}"
+                val classNode = classNodes.getOrPut(classKey) {
+                    val node = DefaultMutableTreeNode(test.fqClassName.substringAfterLast('.'))
+                    treeModel.insertNodeInto(node, moduleNode, moduleNode.childCount)
+                    node
+                }
+
+                val testNode = DefaultMutableTreeNode(test)
+                testNodes[test] = testNode
+                treeModel.insertNodeInto(testNode, classNode, classNode.childCount)
             }
 
-            val classKey = "${test.gradleModulePath}:${test.fqClassName}"
-            val classNode = classNodes.getOrPut(classKey) {
-                val node = DefaultMutableTreeNode(test.fqClassName.substringAfterLast('.'))
-                treeModel.insertNodeInto(node, moduleNode, moduleNode.childCount)
-                node
-            }
-
-            val testNode = DefaultMutableTreeNode(test)
-            testNodes[test] = testNode
-            treeModel.insertNodeInto(testNode, classNode, classNode.childCount)
-        }
+        sortAll()
+        TreeUtil.restoreExpandedPaths(tree, expandedPaths)
+        tree.selectionPaths = selectedPaths
     }
+
+    private fun sortAll() {
+        // сортируем модули
+        sortChildren(root)
+
+        // сортируем классы и тесты
+        moduleNodes.values.forEach { moduleNode ->
+            sortChildren(moduleNode)
+
+            moduleNode.children().toList().forEach { classNode ->
+                classNode as DefaultMutableTreeNode
+                sortChildren(classNode)
+            }
+        }
+
+        treeModel.reload(root)
+    }
+
+    private fun sortChildren(parent: DefaultMutableTreeNode) {
+        val children = parent.children().toList() as List<DefaultMutableTreeNode>
+
+        val sorted = children.sortedBy {
+            val obj = it.userObject
+            when (obj) {
+                is PaparazziTest -> obj.methodName
+                else -> obj.toString()
+            }
+        }
+
+        parent.removeAllChildren()
+        sorted.forEach { parent.add(it) }
+    }
+
+    private fun <T> Enumeration<T>.toList(): List<T> =
+        Collections.list(this)
 
     private fun updateNode(test: PaparazziTest) {
         val node = testNodes[test] ?: return
@@ -284,12 +345,17 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()) {
     // ------------------------------------------------------------------
 
     private fun onSelectionChanged() {
+        referencePanel.removeAll()
+        referencePanel.repaint()
+        deltaPanel.removeAll()
+        deltaPanel.repaint()
+
         val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return
         val test = node.userObject as? PaparazziTest ?: return
         val projectRoot = Paths.get(project.basePath ?: return)
 
         val refs = test.referenceSnapshots(projectRoot)
-        if (refs.isNotEmpty()){
+        if (refs.isNotEmpty()) {
             val images = refs.map { it.first }
             val labels = refs.map { it.second }
 

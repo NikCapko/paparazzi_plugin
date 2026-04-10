@@ -7,7 +7,7 @@
 
     <version>1.0</version>
 
-    <idea-version since-build="253.*" />
+    <idea-version since-build="253.*"/>
 
     <change-notes>
 
@@ -18,7 +18,7 @@
     <depends>org.jetbrains.kotlin</depends>
 
     <extensions defaultExtensionNs="org.jetbrains.kotlin">
-        <supportsKotlinPluginMode supportsK2="true" />
+        <supportsKotlinPluginMode supportsK2="true"/>
     </extensions>
 
     <extensions defaultExtensionNs="com.intellij">
@@ -32,20 +32,10 @@
                 factoryClass="com.nikcapko.paparazzi.PaparazziToolWindowFactory"
         />
 
-        <!-- Сервис для хранения состояния (список тестов, статусы) -->
-        <!--        <projectService-->
-        <!--                serviceImplementation="com.nikcapko.paparazzi.PaparazziTestRegistry"-->
-        <!--        />-->
-
         <!-- Стартовая активность — первичное сканирование при открытии проекта -->
         <postStartupActivity
                 implementation="com.nikcapko.paparazzi.PaparazziStartupActivity"
         />
-
-        <!-- Слушатель изменений файлов — реиндексация при редактировании тестов -->
-        <!--        <fileDocumentManagerListener-->
-        <!--                implementation="com.nikcapko.paparazzi.PaparazziFileListener"-->
-        <!--        />-->
 
     </extensions>
 
@@ -82,6 +72,18 @@
                     text="Refresh Test List"
                     icon="AllIcons.Actions.ForceRefresh"
             />
+
+            <separator/>
+
+            <action id="Paparazzi.ExpandAll"
+                    class="com.nikcapko.paparazzi.ExpandAllTestsAction"
+                    text="Expand All"
+                    icon="AllIcons.Actions.Expandall"/>
+
+            <action id="Paparazzi.CollapseAll"
+                    class="com.nikcapko.paparazzi.CollapseAllTestsAction"
+                    text="Collapse All"
+                    icon="AllIcons.Actions.Collapseall"/>
 
         </group>
     </actions>

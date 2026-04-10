@@ -4,11 +4,7 @@ import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.ProjectLocator
 import com.intellij.openapi.startup.ProjectActivity
-import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.openapi.vfs.VirtualFileEvent
-import com.intellij.openapi.vfs.VirtualFileListener
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
@@ -32,23 +28,6 @@ class PaparazziStartupActivity : ProjectActivity {
 }
 
 // ---------------------------------------------------------------------------
-// Слушатель изменений файлов
-// ---------------------------------------------------------------------------
-
-class PaparazziFileListener : VirtualFileListener {
-
-    override fun contentsChanged(event: VirtualFileEvent) {
-        val file = event.file
-        if (file.extension != "kt" && file.extension != "java") return
-
-        // Ленивый поиск проекта через FileDocumentManager
-        val project = ProjectLocator.getInstance().guessProjectForFile(file) ?: return
-
-        PaparazziIndexer.scheduleReindex(project, debounceMs = 1500)
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Сам индексер
 // ---------------------------------------------------------------------------
 
@@ -57,17 +36,18 @@ object PaparazziIndexer {
     private val executor = AppExecutorUtil.createBoundedScheduledExecutorService("PaparazziIndexer", 1)
     private var pendingTask: ScheduledFuture<*>? = null
 
-    // Кэш результатов по файлу
-    private val fileCache = mutableMapOf<VirtualFile, List<PaparazziTest>>()
-
     /**
      * Планирует переиндексацию с дебаунсом
      */
-    fun scheduleReindex(project: Project, debounceMs: Long = 300) {
+    fun scheduleReindex(project: Project) {
         pendingTask?.cancel(false)
-        pendingTask = executor.schedule({
-            reindexNonBlocking(project)
-        }, debounceMs, TimeUnit.MILLISECONDS)
+        pendingTask = executor.schedule(
+            {
+                reindexNonBlocking(project)
+            },
+            300,
+            TimeUnit.MILLISECONDS,
+        )
     }
 
     /**
@@ -85,12 +65,9 @@ object PaparazziIndexer {
                     .filter { it.path.endsWith("Test.kt") }
 
                 ktFiles.flatMap { vFile ->
-                    // Кэшируем результаты по файлу
-                    fileCache.getOrPut(vFile) {
-                        PsiManager.getInstance(project).findFile(vFile)?.let { psi ->
-                            extractTestsFromFile(psi)
-                        } ?: emptyList()
-                    }
+                    PsiManager.getInstance(project).findFile(vFile)?.let { psi ->
+                        extractTestsFromFile(psi)
+                    } ?: emptyList()
                 }
             }
         }
@@ -169,4 +146,3 @@ object PaparazziIndexer {
         return ":"
     }
 }
-
