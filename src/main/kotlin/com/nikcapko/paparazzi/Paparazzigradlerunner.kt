@@ -9,31 +9,21 @@ import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
 import com.intellij.openapi.project.Project
 import org.w3c.dom.Element
 import java.nio.file.Files
-import java.nio.file.Path
 import java.nio.file.Paths
 import javax.xml.parsers.DocumentBuilderFactory
 
 object PaparazziGradleRunner {
 
     /**
-     * Запускает один конкретный тест.
-     * Под капотом: ./gradlew :module:testDebugUnitTest --tests "Fqn.method"
+     * Запускает выбранные тесты.
+     * Под капотом: ./gradlew :module:verifyPaparazzi "Fqn.method"
      */
-    fun runTest(project: Project, test: PaparazziTest) {
-        run(
-            project = project,
-            tests = listOf(test),
-            task = verifyTask(test.gradleModulePath),
-            extraArgs = "--tests \"${test.fqClassName}.${test.methodName}${if (test.useParametrized) "[*]" else ""}\""
-        )
-    }
-
     fun runTests(project: Project, tests: List<PaparazziTest>) {
         tests.groupBy { it.gradleModulePath }.forEach { (_, moduleTests) ->
             run(
                 project = project,
                 tests = moduleTests,
-                task = verifyTask(moduleTests.first().gradleModulePath)
+                task = verifyTask(project, moduleTests.first().gradleModulePath)
                 // ❗ без --tests
             )
         }
@@ -150,7 +140,7 @@ object PaparazziGradleRunner {
             run(
                 project = project,
                 tests = moduleTests,
-                task = recordTask(moduleTests.first().gradleModulePath)
+                task = recordTask(project, moduleTests.first().gradleModulePath)
             )
         }
     }
@@ -166,6 +156,8 @@ object PaparazziGradleRunner {
         if (tests.isEmpty()) return
 
         val registry = project.getService(PaparazziTestRegistry::class.java)
+
+        val suffix = PaparazziSettings.getInstance(project).state.taskSuffix
 
         // статус RUNNING
         tests.forEach { registry.setStatus(it, TestStatus.RUNNING) }
@@ -196,9 +188,13 @@ object PaparazziGradleRunner {
         )
     }
 
-    private fun verifyTask(module: String) =
-        "$module:verifyPaparazziGmsDebug"
+    private fun verifyTask(project: Project, module: String): String {
+        val suffix = PaparazziSettings.getInstance(project).state.taskSuffix
+        return "$module:verifyPaparazzi$suffix"
+    }
 
-    private fun recordTask(module: String) =
-        "$module:recordPaparazziGmsDebug"
+    private fun recordTask(project: Project, module: String): String {
+        val suffix = PaparazziSettings.getInstance(project).state.taskSuffix
+        return "$module:recordPaparazzi$suffix"
+    }
 }

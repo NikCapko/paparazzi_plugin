@@ -37,6 +37,12 @@
                 implementation="com.nikcapko.paparazzi.PaparazziStartupActivity"
         />
 
+        <projectConfigurable
+                id="paparazzi.settings"
+                displayName="Paparazzi"
+                parentId="tools"
+                instance="com.nikcapko.paparazzi.PaparazziConfigurable"/>
+
     </extensions>
 
     <actions>
