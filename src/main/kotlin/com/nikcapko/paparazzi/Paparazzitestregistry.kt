@@ -46,8 +46,7 @@ data class PaparazziTest(
     val className: String get() = fqClassName.substringAfterLast('.')
 
     fun referenceSnapshots(projectRoot: Path): List<Pair<BufferedImage, String>> {
-        // ИСПРАВЛЕНИЕ: заменяем все точки на подчеркивания для корректного имени файла Paparazzi
-        val baseName = "${fqClassName.replace('.', '_')}_${methodName.replace(" ", "_")}"
+        val baseName = "${fqClassName.substringBeforeLast(".")}_${className}_${methodName.replace(" ", "_")}"
 
         val imagesDir = projectRoot
             .resolve(gradleModulePath.removePrefix(":").replace(':', '/'))
