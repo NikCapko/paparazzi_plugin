@@ -67,7 +67,7 @@
                     id="Paparazzi.ReRecord"
                     class="com.nikcapko.paparazzi.ReRecordAction"
                     text="Re-record Snapshots"
-                    icon="AllIcons.Actions.Refresh"
+                    icon="AllIcons.Actions.Dump"
             />
 
             <separator/>
@@ -76,7 +76,7 @@
                     id="Paparazzi.Refresh"
                     class="com.nikcapko.paparazzi.RefreshTestsAction"
                     text="Refresh Test List"
-                    icon="AllIcons.Actions.ForceRefresh"
+                    icon="AllIcons.Actions.BuildLoadChanges"
             />
 
             <separator/>
