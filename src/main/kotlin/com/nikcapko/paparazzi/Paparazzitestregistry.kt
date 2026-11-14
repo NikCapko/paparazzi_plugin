@@ -1,7 +1,6 @@
 package com.nikcapko.paparazzi
 
 import com.intellij.openapi.components.Service
-import com.intellij.openapi.project.Project
 import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.Path
@@ -20,25 +19,35 @@ enum class TestStatus {
     RECORDED    // только что перезаписан эталон
 }
 
-data class PaparazziTest(
-    /** com.example.ui.ButtonTest */
-    val fqClassName: String,
-    /** myButtonLightTheme */
-    val methodName: String,
-    /** :feature:ui */
+// ---------------------------------------------------------------------------
+// Стабильный идентификатор теста (не меняется при сдвиге строк кода)
+// ---------------------------------------------------------------------------
+data class PaparazziTestId(
     val gradleModulePath: String,
-    /** абсолютный путь к .kt/.java файлу */
+    val fqClassName: String,
+    val methodName: String
+)
+
+// ---------------------------------------------------------------------------
+// Доменная модель теста
+// ---------------------------------------------------------------------------
+data class PaparazziTest(
+    val fqClassName: String,
+    val methodName: String,
+    val gradleModulePath: String,
     val sourceFile: Path,
-    /** строка объявления метода */
     val lineNumber: Int,
-    /** использование параметризации для запуска тестов */
     val useParametrized: Boolean,
 ) {
+    // Стабильный ключ для хранения в Map и сравнения
+    val id: PaparazziTestId get() = PaparazziTestId(gradleModulePath, fqClassName, methodName)
+
     val displayName: String get() = methodName
     val className: String get() = fqClassName.substringAfterLast('.')
 
     fun referenceSnapshots(projectRoot: Path): List<Pair<BufferedImage, String>> {
-        val baseName = "${fqClassName.substringBeforeLast(".")}_${className}_${methodName.replace(" ", "_")}"
+        // ИСПРАВЛЕНИЕ: заменяем все точки на подчеркивания для корректного имени файла Paparazzi
+        val baseName = "${fqClassName.replace('.', '_')}_${methodName.replace(" ", "_")}"
 
         val imagesDir = projectRoot
             .resolve(gradleModulePath.removePrefix(":").replace(':', '/'))
@@ -54,13 +63,15 @@ data class PaparazziTest(
             ?.sortedWith { file, file1 -> file.toPath().compareTo(file1.toPath()) }
             ?.mapNotNull {
                 val img = ImageIO.read(it.toPath().toFile()) ?: return@mapNotNull null
-                img to it.name.replace(baseName.substringBefore(methodName.replace(" ", "_")), "")
+                // Очищаем имя файла от базового префикса, чтобы оставить только суффикс (например, "[0]")
+                val suffix = it.name.removePrefix(baseName).removeSuffix(".png")
+                img to suffix
             }
             ?: emptyList()
     }
 
     fun loadFailureDiffs(projectRoot: Path): List<Pair<BufferedImage, String>> {
-        val baseName = "${fqClassName.substringBeforeLast(".")}_${className}_${methodName.replace(" ", "_")}"
+        val baseName = "${fqClassName.replace('.', '_')}_${methodName.replace(" ", "_")}"
 
         val failuresDir = projectRoot
             .resolve(gradleModulePath.removePrefix(":").replace(':', '/'))
@@ -76,9 +87,11 @@ data class PaparazziTest(
             .toList()
             .mapNotNull { path ->
                 val img = ImageIO.read(path.toFile()) ?: return@mapNotNull null
-                img to path.name
-                    .replace(baseName.substringBefore(methodName.replace(" ", "_")), "")
-                    .replace("delta-", "")
+                val suffix = path.name
+                    .removePrefix("delta-")
+                    .removePrefix(baseName)
+                    .removeSuffix(".png")
+                img to suffix
             }
     }
 }
@@ -86,12 +99,13 @@ data class PaparazziTest(
 // ---------------------------------------------------------------------------
 // Реестр тестов (project-level service)
 // ---------------------------------------------------------------------------
-
 @Service(Service.Level.PROJECT)
 class PaparazziTestRegistry {
 
     private val tests = mutableListOf<PaparazziTest>()
-    private val statusMap = mutableMapOf<PaparazziTest, TestStatus>()
+
+    // ИСПОЛЬЗУЕМ СТАБИЛЬНЫЙ ID В КАЧЕСТВЕ КЛЮЧА
+    private val statusMap = mutableMapOf<PaparazziTestId, TestStatus>()
 
     private val listeners = mutableListOf<(List<PaparazziTest>) -> Unit>()
     private val statusListeners = mutableListOf<(PaparazziTest) -> Unit>()
@@ -106,38 +120,36 @@ class PaparazziTestRegistry {
         )
 
     fun update(newTests: List<PaparazziTest>) {
+        val newIds = newTests.map { it.id }.toSet()
+
+        // 1. Удаляем статусы тестов, которые больше не существуют (были удалены или переименованы)
+        statusMap.keys.retainAll(newIds)
+
+        // 2. Обновляем список тестов
         tests.clear()
         tests.addAll(newTests)
 
-        // сбрасываем статусы только для новых
-        newTests.forEach {
-            statusMap.putIfAbsent(it, TestStatus.UNKNOWN)
+        // 3. Инициализируем статус UNKNOWN для новых тестов, если его ещё нет
+        newTests.forEach { test ->
+            statusMap.putIfAbsent(test.id, TestStatus.UNKNOWN)
         }
 
         listeners.forEach { it(newTests) }
     }
 
     fun setStatus(test: PaparazziTest, status: TestStatus) {
-        statusMap[test] = status
+        statusMap[test.id] = status
         statusListeners.forEach { it(test) }
     }
 
     fun getStatus(test: PaparazziTest): TestStatus =
-        statusMap[test] ?: TestStatus.UNKNOWN
+        statusMap[test.id] ?: TestStatus.UNKNOWN
 
     fun addListener(listener: (List<PaparazziTest>) -> Unit) {
         listeners += listener
     }
 
-    fun removeListener(listener: (List<PaparazziTest>) -> Unit) {
-        listeners -= listener
-    }
-
     fun addStatusListener(listener: (PaparazziTest) -> Unit) {
         statusListeners += listener
-    }
-
-    fun removeStatusListener(listener: (PaparazziTest) -> Unit) {
-        statusListeners -= listener
     }
 }
