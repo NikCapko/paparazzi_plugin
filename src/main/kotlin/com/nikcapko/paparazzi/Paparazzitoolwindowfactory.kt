@@ -46,10 +46,6 @@ class PaparazziToolWindowFactory : ToolWindowFactory {
 // Главная панель
 // ---------------------------------------------------------------------------
 
-object PaparazziDataKeys {
-    val TREE: DataKey<JTree> = DataKey.create("PAPARAZZI_TREE")
-}
-
 class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()), DataProvider {
 
     private val registry = project.getService(PaparazziTestRegistry::class.java)
@@ -132,14 +128,30 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()), Dat
 
         deltaPanel.isVisible = false
 
+        // Привязываем popup menu к дереву
+        val contextGroup = ActionManager.getInstance()
+            .getAction("Paparazzi.ContextMenu") as ActionGroup
+        val popupMenu = ActionManager.getInstance()
+            .createActionPopupMenu("PaparazziContextMenu", contextGroup)
+        tree.componentPopupMenu = popupMenu.component
+
         rebuildTree()
     }
 
     override fun getData(dataId: String): Any? {
         return when {
-            PaparazziDataKeys.TREE.`is`(dataId) -> tree
+            PaparazziDataKeys.SELECTED_TESTS.`is`(dataId) -> getSelectedTests()
             else -> null
         }
+    }
+
+    private fun getSelectedTests(): List<PaparazziTest> {
+        return tree.selectionPaths
+            ?.mapNotNull { path ->
+                (path.lastPathComponent as? DefaultMutableTreeNode)
+                    ?.userObject as? PaparazziTest
+            }
+            ?: emptyList()
     }
 
     // ------------------------------------------------------------------
@@ -567,12 +579,61 @@ class PaparazziTreeCellRenderer(
             }
 
             is String -> {
-                // Узел модуля или класса
-                icon = if (node.parent == node.root()) AllIcons.Nodes.Module
-                else AllIcons.Nodes.TestGroup
-                append(obj)
+                // Проверяем, это модуль или класс
+                val isModule = node.parent == node.root()
+
+                if (isModule) {
+                    // Для модуля показываем счётчики
+                    icon = AllIcons.Nodes.Module
+                    append(obj)
+
+                    // Подсчитываем тесты и ошибки в этом модуле
+                    val (totalTests, failedTests) = countTestsInModule(node)
+
+                    if (totalTests > 0) {
+                        append("  ")
+                        append("($totalTests tests", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+
+                        if (failedTests > 0) {
+                            append(", ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                            append("$failedTests failed", SimpleTextAttributes.ERROR_ATTRIBUTES)
+                        }
+
+                        append(")", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    }
+                } else {
+                    // Для класса показываем только иконку и имя
+                    icon = AllIcons.Nodes.TestGroup
+                    append(obj)
+                }
             }
         }
+    }
+
+    /**
+     * Подсчитывает общее количество тестов и количество упавших тестов в модуле
+     */
+    private fun countTestsInModule(moduleNode: DefaultMutableTreeNode): Pair<Int, Int> {
+        var totalTests = 0
+        var failedTests = 0
+
+        // Проходим по всем дочерним узлам (классам)
+        for (i in 0 until moduleNode.childCount) {
+            val classNode = moduleNode.getChildAt(i) as? DefaultMutableTreeNode ?: continue
+
+            // Проходим по всем тестам в классе
+            for (j in 0 until classNode.childCount) {
+                val testNode = classNode.getChildAt(j) as? DefaultMutableTreeNode ?: continue
+                val test = testNode.userObject as? PaparazziTest ?: continue
+
+                totalTests++
+                if (registry.getStatus(test) == TestStatus.FAILED) {
+                    failedTests++
+                }
+            }
+        }
+
+        return totalTests to failedTests
     }
 
     private fun DefaultMutableTreeNode.root(): TreeNode {

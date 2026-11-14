@@ -15,29 +15,34 @@ import javax.xml.parsers.DocumentBuilderFactory
 object PaparazziGradleRunner {
 
     /**
-     * Запускает выбранные тесты.
-     * Под капотом: ./gradlew :module:verifyPaparazzi "Fqn.method"
+     * Запускает выбранные тесты точечно через --tests
      */
     fun runTests(project: Project, tests: List<PaparazziTest>) {
+        if (tests.isEmpty()) return
+
         tests.groupBy { it.gradleModulePath }.forEach { (_, moduleTests) ->
+            // Формируем аргументы --tests для каждого теста
+            val testArgs = moduleTests.joinToString(" ") { test ->
+                "--tests \"${test.fqClassName}.${test.methodName}\""
+            }
+
             run(
                 project = project,
                 tests = moduleTests,
-                task = verifyTask(project, moduleTests.first().gradleModulePath)
+                task = verifyTask(project, moduleTests.first().gradleModulePath),
+                extraArgs = testArgs
             )
         }
     }
 
     /**
-     * Запускает все переданные тесты.
-     * Если они из разных модулей — группирует по модулю и запускает отдельные таски.
+     * Запускает все тесты (без фильтрации --tests)
      */
     fun runAll(project: Project) {
         val registry = project.getService(PaparazziTestRegistry::class.java)
         val allTests = registry.allTests
         if (allTests.isEmpty()) return
 
-        // Помечаем все тесты как RUNNING
         allTests.forEach { registry.setStatus(it, TestStatus.RUNNING) }
 
         val suffix = PaparazziSettings.getInstance(project).state.taskSuffix
@@ -69,15 +74,22 @@ object PaparazziGradleRunner {
     }
 
     /**
-     * Перезаписывает эталонные снимки.
+     * Перезаписывает эталонные снимки для выбранных тестов
      * -Dpaparazzi.record=true — официальный флаг Cash App Paparazzi.
      */
     fun reRecord(project: Project, tests: List<PaparazziTest>) {
+        if (tests.isEmpty()) return
+
         tests.groupBy { it.gradleModulePath }.forEach { (_, moduleTests) ->
+            val testArgs = moduleTests.joinToString(" ") { test ->
+                "--tests \"${test.fqClassName}.${test.methodName}\""
+            }
+
             run(
                 project = project,
                 tests = moduleTests,
-                task = recordTask(project, moduleTests.first().gradleModulePath)
+                task = recordTask(project, moduleTests.first().gradleModulePath),
+                extraArgs = testArgs
             )
         }
     }

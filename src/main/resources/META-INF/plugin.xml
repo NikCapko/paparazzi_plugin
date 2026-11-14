@@ -92,6 +92,54 @@
                     icon="AllIcons.Actions.Collapseall"/>
 
         </group>
+
+        <group id="Paparazzi.ContextMenu" text="Paparazzi" popup="true">
+            <action
+                    id="Paparazzi.RunSelectedCtx"
+                    class="com.nikcapko.paparazzi.RunSelectedTestAction"
+                    text="Run Test"
+                    icon="AllIcons.Actions.Execute"/>
+
+            <action
+                    id="Paparazzi.ReRecordCtx"
+                    class="com.nikcapko.paparazzi.ReRecordAction"
+                    text="Re-record Snapshot"
+                    icon="AllIcons.Actions.Refresh"/>
+
+            <separator/>
+
+            <action
+                    id="Paparazzi.OpenSourceCtx"
+                    class="com.nikcapko.paparazzi.OpenSourceAction"
+                    text="Open Source"
+                    icon="AllIcons.Actions.EditSource"/>
+
+            <action
+                    id="Paparazzi.OpenReferenceCtx"
+                    class="com.nikcapko.paparazzi.OpenReferenceSnapshotAction"
+                    text="Open Reference Snapshot"
+                    icon="AllIcons.Actions.Preview"/>
+
+            <action
+                    id="Paparazzi.OpenFailureCtx"
+                    class="com.nikcapko.paparazzi.OpenFailureDiffAction"
+                    text="Open Failure Diff"
+                    icon="AllIcons.Actions.Diff"/>
+
+            <separator/>
+
+            <action
+                    id="Paparazzi.CopyGradleCommandCtx"
+                    class="com.nikcapko.paparazzi.CopyGradleCommandAction"
+                    text="Copy Gradle Command"
+                    icon="AllIcons.Actions.Copy"/>
+
+            <action
+                    id="Paparazzi.CopyFqnCtx"
+                    class="com.nikcapko.paparazzi.CopyTestFqnAction"
+                    text="Copy Test FQN"
+                    icon="AllIcons.Actions.Copy"/>
+        </group>
     </actions>
 
 </idea-plugin>

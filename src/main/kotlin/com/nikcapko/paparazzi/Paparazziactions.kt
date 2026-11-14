@@ -20,7 +20,11 @@ import javax.swing.tree.DefaultMutableTreeNode
 abstract class BasePaparazziAction : AnAction() {
 
     protected fun selectedTests(e: AnActionEvent): List<PaparazziTest> {
-        // Ищем дерево в компонентах Tool Window
+        // Сначала пробуем получить через DataKey (для контекстного меню)
+        val fromDataKey = e.getData(PaparazziDataKeys.SELECTED_TESTS)
+        if (!fromDataKey.isNullOrEmpty()) return fromDataKey
+
+        // Fallback: ищем Tree в компонентах (для toolbar)
         val tree = e.getData(PlatformDataKeys.CONTEXT_COMPONENT)
             ?.let { findTree(it as? Container) }
             ?: return emptyList()
