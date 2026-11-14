@@ -418,7 +418,7 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()), Dat
 
         // Разбиваем по индексу в квадратных скобках
         images.zip(labels).forEach { (img, lbl) ->
-            val match = Regex("\\[(\\d+)]").find(lbl)
+            val match = Regex("""\[(\d+)]""").find(lbl)
             val index = match?.groupValues?.get(1)?.toIntOrNull() ?: 0
             grouped.computeIfAbsent(index) { mutableListOf() }.add(img to lbl)
         }

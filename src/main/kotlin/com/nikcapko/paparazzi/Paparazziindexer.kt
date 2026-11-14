@@ -147,7 +147,9 @@ object PaparazziIndexer {
 
     private fun hasPaparazziFieldKt(ktClass: KtClass): Boolean {
         return ktClass.superTypeListEntries.any { entry ->
-            entry.typeAsUserType?.referencedName == "PaparazziBaseTest"
+            entry.typeAsUserType?.referencedName == "PaparazziBaseTest" ||
+            entry.typeAsUserType?.referencedName == "BaseScreenshotTest" ||
+            entry.typeAsUserType?.referencedName == "ScreenshotTest"
         }
     }
 

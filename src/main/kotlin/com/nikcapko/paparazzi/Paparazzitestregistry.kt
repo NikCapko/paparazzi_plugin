@@ -129,7 +129,15 @@ class PaparazziTestRegistry {
         listeners += listener
     }
 
+    fun removeListener(listener: (List<PaparazziTest>) -> Unit) {
+        listeners -= listener
+    }
+
     fun addStatusListener(listener: (PaparazziTest) -> Unit) {
         statusListeners += listener
+    }
+
+    fun removeStatusListener(listener: (PaparazziTest) -> Unit) {
+        statusListeners -= listener
     }
 }
