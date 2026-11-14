@@ -4,6 +4,8 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.Task
 import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.tree.TreeUtil
@@ -97,7 +99,17 @@ class ReRecordAction : BasePaparazziAction() {
 class RefreshTestsAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        PaparazziIndexer.scheduleReindex(project)
+
+        ProgressManager.getInstance().run(object : Task.Backgroundable(
+            project,
+            "Indexing Paparazzi Tests",
+            true // canBeCancelled = true
+        ) {
+            override fun run(indicator: com.intellij.openapi.progress.ProgressIndicator) {
+                indicator.isIndeterminate = false // Включаем детерминированный прогресс-бар (с процентами)
+                PaparazziIndexer.reindexWithProgress(project, indicator)
+            }
+        })
     }
 }
 

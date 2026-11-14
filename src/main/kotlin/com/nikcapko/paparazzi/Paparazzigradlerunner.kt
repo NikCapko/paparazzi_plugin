@@ -43,7 +43,8 @@ object PaparazziGradleRunner {
 
         val settings = ExternalSystemTaskExecutionSettings().apply {
             externalProjectPath = project.basePath
-            taskNames = listOf("verifyPaparazziGmsDebug")  // один таск для всех тестов
+            val suffix = PaparazziSettings.getInstance(project).state.taskSuffix
+            taskNames = listOf("verifyPaparazzi$suffix")
             vmOptions = ""
             scriptParameters = ""  // если нужны extraArgs, можно добавить
             externalSystemIdString = "GRADLE"
@@ -82,7 +83,8 @@ object PaparazziGradleRunner {
             val moduleDir = projectRoot.resolve(modulePath.removePrefix(":").replace(':', '/'))
 
             // Проверяем стандартный путь отчетов Gradle для unit test debug
-            val reportsDir = moduleDir.resolve("build/test-results/testGmsDebugUnitTest")
+            val suffix = PaparazziSettings.getInstance(project).state.taskSuffix
+            val reportsDir = moduleDir.resolve("build/test-results/test${suffix}UnitTest")
             if (!Files.exists(reportsDir)) {
                 // Если нет папки отчетов, все UNKNOWN
                 moduleTests.forEach { registry.setStatus(it, TestStatus.UNKNOWN) }
@@ -156,8 +158,6 @@ object PaparazziGradleRunner {
         if (tests.isEmpty()) return
 
         val registry = project.getService(PaparazziTestRegistry::class.java)
-
-        val suffix = PaparazziSettings.getInstance(project).state.taskSuffix
 
         // статус RUNNING
         tests.forEach { registry.setStatus(it, TestStatus.RUNNING) }

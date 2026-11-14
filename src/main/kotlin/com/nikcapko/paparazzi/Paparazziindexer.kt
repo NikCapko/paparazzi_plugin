@@ -1,20 +1,18 @@
 package com.nikcapko.paparazzi
 
-import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.module.ModuleManager
+import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
-import com.intellij.openapi.vfs.findPsiFile
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
-import com.intellij.psi.search.FileTypeIndex
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.util.concurrency.AppExecutorUtil
-import org.jetbrains.concurrency.CancellablePromise
-import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedFunction
@@ -28,7 +26,14 @@ import java.util.concurrent.TimeUnit
 
 class PaparazziStartupActivity : ProjectActivity {
     override suspend fun execute(project: Project) {
-        PaparazziIndexer.scheduleReindex(project)
+        // При старте тоже показываем прогресс, но можно сделать его невидимым, если мешает
+        ProgressManager.getInstance().run(object : Task.Backgroundable(
+            project, "Indexing Paparazzi Tests", true
+        ) {
+            override fun run(indicator: ProgressIndicator) {
+                PaparazziIndexer.reindexWithProgress(project, indicator)
+            }
+        })
     }
 }
 
@@ -40,77 +45,68 @@ object PaparazziIndexer {
 
     private val executor = AppExecutorUtil.createBoundedScheduledExecutorService("PaparazziIndexer", 1)
     private var pendingTask: ScheduledFuture<*>? = null
-    private var readAction: CancellablePromise<List<PaparazziTest>>? = null
 
     /**
      * Планирует переиндексацию с дебаунсом
      */
     fun scheduleReindex(project: Project) {
         pendingTask?.cancel(true)
-        pendingTask = executor.schedule(
-            {
-                reindexNonBlocking(project)
-            },
-            300,
-            TimeUnit.MILLISECONDS,
-        )
+        pendingTask = executor.schedule({
+            ProgressManager.getInstance().run(object : com.intellij.openapi.progress.Task.Backgroundable(
+                project, "Indexing Paparazzi Tests", true
+            ) {
+                override fun run(indicator: com.intellij.openapi.progress.ProgressIndicator) {
+                    reindexWithProgress(project, indicator)
+                }
+            })
+        }, 300, TimeUnit.MILLISECONDS)
     }
 
     /**
-     * Основной non-blocking индекс
+     * Основной метод индексации с поддержкой ProgressIndicator
      */
-    private fun reindexNonBlocking(project: Project) {
-        val registry = project.getService(PaparazziTestRegistry::class.java)
+    fun reindexWithProgress(project: Project, indicator: ProgressIndicator) {
+        indicator.text = "Preparing to scan..."
 
-        ReadAction.nonBlocking<List<PaparazziTest>> {
-            ModuleManager.getInstance(project).modules.flatMap { module ->
+        // ReadAction.compute безопасно выполняет чтение PSI из фонового потока
+        // и блокирует метод run(), пока не закончит, что держит прогресс-бар открытым.
+        val tests = ReadAction.compute<List<PaparazziTest>, Exception> {
+            val modules = ModuleManager.getInstance(project).modules
+            val totalModules = modules.size
+            var currentModule = 0
+            val result = mutableListOf<PaparazziTest>()
+
+            for (module in modules) {
+                if (indicator.isCanceled) {
+                    break // Пользователь нажал Cancel
+                }
+
+                currentModule++
+                indicator.text = "Scanning module: ${module.name} ($currentModule/$totalModules)"
+                indicator.fraction = currentModule.toDouble() / totalModules // Заполнение полоски 0.0 -> 1.0
+
                 val scope = module.moduleContentScope
-
-                // Находим только Kotlin тестовые файлы
                 val ktFiles = FilenameIndex.getAllFilesByExt(project, "kt", scope)
                     .filter { it.path.endsWith("Test.kt") }
 
-                ktFiles.flatMap { vFile ->
+                for (vFile in ktFiles) {
+                    if (indicator.isCanceled) break
+
                     PsiManager.getInstance(project).findFile(vFile)?.let { psi ->
-                        extractTestsFromFile(psi)
-                    } ?: emptyList()
+                        result.addAll(extractTestsFromFile(psi))
+                    }
                 }
             }
+            result
         }
-            .expireWith(project)
-            .finishOnUiThread(ModalityState.any()) { tests ->
+
+        // Если задачу не отменили, обновляем UI на главном потоке (EDT)
+        if (!indicator.isCanceled) {
+            ApplicationManager.getApplication().invokeLater {
+                val registry = project.getService(PaparazziTestRegistry::class.java)
                 registry.update(tests)
             }
-            .submit(AppExecutorUtil.getAppExecutorService())
-    }
-
-    private fun reindexNonBlocking2(project: Project) {
-        val registry = project.getService(PaparazziTestRegistry::class.java)
-
-        ReadAction.nonBlocking<List<PaparazziTest>> {
-            val result = mutableListOf<PaparazziTest>()
-
-            ModuleManager.getInstance(project).modules.flatMap { module ->
-                val scope = module.moduleContentScope
-
-                FileTypeIndex
-                    .processFiles(KotlinFileType.INSTANCE, { vFile ->
-                        if (vFile.name.endsWith("Test.kt")) {
-                            vFile.findPsiFile(project)
-                                ?.let { extractTestsFromFile(it) }
-                                ?.let { result.addAll(it) }
-                        }
-                        true
-                    }, scope)
-                result
-            }
         }
-            .expireWith(project)
-            .finishOnUiThread(ModalityState.any()) { tests ->
-                registry.update(tests)
-                pendingTask?.cancel(true)
-            }
-            .submit(AppExecutorUtil.getAppExecutorService())
     }
 
     /**
