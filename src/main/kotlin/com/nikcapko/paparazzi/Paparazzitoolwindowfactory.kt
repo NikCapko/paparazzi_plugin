@@ -9,6 +9,7 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.*
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.tree.TreeUtil
@@ -72,12 +73,30 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()), Dat
 
     // ----- Search -----
     private var filterText = ""
+
+    // 🆕 Состояние фильтрации по статусу
+    private var showOnlyFailed = false
+
     private val searchField = SearchTextField().apply {
         addDocumentListener(object : DocumentListener {
             override fun insertUpdate(e: DocumentEvent?) = onFilterChanged()
             override fun removeUpdate(e: DocumentEvent?) = onFilterChanged()
             override fun changedUpdate(e: DocumentEvent?) = onFilterChanged()
         })
+    }
+
+    // 🆕 Кнопка-переключатель "Только упавшие"
+    private val filterFailedButton = JToggleButton().apply {
+        isSelected = false
+        icon = AllIcons.General.Filter
+        toolTipText = "Show only failed tests"
+        text = "Failed Only" // Добавляем текст для наглядности
+        addActionListener {
+            showOnlyFailed = isSelected
+            // Меняем иконку для наглядности
+            icon = if (showOnlyFailed) AllIcons.RunConfigurations.TestFailed else AllIcons.General.Filter
+            rebuildTree()
+        }
     }
 
     private val testNodes = mutableMapOf<PaparazziTest, DefaultMutableTreeNode>()
@@ -90,20 +109,34 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()), Dat
                 updateTreeStructure(tests)
             }
         }
+
         registry.addStatusListener { test ->
             SwingUtilities.invokeLater {
-                updateNode(test)
+                // 🆕 Если включен фильтр, перестраиваем дерево целиком,
+                // чтобы скрыть исправленный тест или показать новый упавший.
+                // Иначе просто обновляем иконку существующего узла.
+                if (showOnlyFailed) {
+                    rebuildTree()
+                } else {
+                    updateNode(test)
+                }
             }
         }
 
         val toolbar = createToolbar()
 
+        // 🆕 Панель для поиска и кнопки фильтра
+        val topFilterPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+            add(searchField)
+            add(filterFailedButton)
+        }
+
         val leftPanel = JPanel(BorderLayout()).apply {
-            add(searchField, BorderLayout.NORTH)
+            add(topFilterPanel, BorderLayout.NORTH) // 🆕 Используем новую панель
             add(JBScrollPane(tree), BorderLayout.CENTER)
         }
 
-        val previewTabs = JTabbedPane().apply {
+        val previewTabs = JBTabbedPane().apply {
             addTab("Reference", referencePanel)
             addTab("Delta", deltaPanel)
         }
@@ -285,20 +318,23 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()), Dat
     }
 
     private fun rebuildTree() {
-        // 1️⃣ Сохраняем текущие выделенные тесты
         val selectedTests = tree.selectionPaths
             ?.mapNotNull { path ->
                 (path.lastPathComponent as? DefaultMutableTreeNode)?.userObject as? PaparazziTest
             }
-            ?.toSet()
-            ?: emptySet()
+            ?.toSet() ?: emptySet()
 
-        // 2️⃣ Пересоздаём дерево
         root.removeAllChildren()
 
-        val tests = registry.allTests
-            .filter { it.matchesFilter(filterText) }
+        // 🆕 Двойная фильтрация: по тексту И по статусу
+        val tests = registry.allTests.filter { test ->
+            val matchesText = if (filterText.isEmpty()) true else test.matchesFilter(filterText)
+            val matchesStatus = if (showOnlyFailed) registry.getStatus(test) == TestStatus.FAILED else true
 
+            matchesText && matchesStatus
+        }
+
+        // groupBy автоматически исключит модули и классы, в которых не осталось тестов после фильтрации!
         tests.groupBy { it.gradleModulePath }.forEach { (module, moduleTests) ->
             val moduleNode = DefaultMutableTreeNode(module)
             moduleTests.groupBy { it.fqClassName }.forEach { (fqClass, classTests) ->
@@ -312,9 +348,14 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()), Dat
         }
 
         treeModel.reload()
-        TreeUtil.expandAll(tree)
 
-        // 3️⃣ Восстанавливаем выделение для всех ранее выбранных тестов
+        // Если включен фильтр "Только упавшие", имеет смысл сразу развернуть всё, чтобы ошибки были видны
+        if (showOnlyFailed) {
+            TreeUtil.expandAll(tree)
+        } else {
+            TreeUtil.expandAll(tree) // Или можно сохранить состояние раскрытия, как было раньше
+        }
+
         val pathsToSelect = mutableListOf<TreePath>()
         selectedTests.forEach { test ->
             findPathForTest(test)?.let { pathsToSelect.add(it) }
