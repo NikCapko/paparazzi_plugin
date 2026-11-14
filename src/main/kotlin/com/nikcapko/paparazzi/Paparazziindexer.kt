@@ -3,13 +3,18 @@ package com.nikcapko.paparazzi
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.module.ModuleManager
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
+import com.intellij.openapi.vfs.findPsiFile
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
+import com.intellij.psi.search.FileTypeIndex
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.util.concurrency.AppExecutorUtil
+import org.jetbrains.concurrency.CancellablePromise
+import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedFunction
@@ -35,12 +40,13 @@ object PaparazziIndexer {
 
     private val executor = AppExecutorUtil.createBoundedScheduledExecutorService("PaparazziIndexer", 1)
     private var pendingTask: ScheduledFuture<*>? = null
+    private var readAction: CancellablePromise<List<PaparazziTest>>? = null
 
     /**
      * Планирует переиндексацию с дебаунсом
      */
     fun scheduleReindex(project: Project) {
-        pendingTask?.cancel(false)
+        pendingTask?.cancel(true)
         pendingTask = executor.schedule(
             {
                 reindexNonBlocking(project)
@@ -74,6 +80,35 @@ object PaparazziIndexer {
             .expireWith(project)
             .finishOnUiThread(ModalityState.any()) { tests ->
                 registry.update(tests)
+            }
+            .submit(AppExecutorUtil.getAppExecutorService())
+    }
+
+    private fun reindexNonBlocking2(project: Project) {
+        val registry = project.getService(PaparazziTestRegistry::class.java)
+
+        ReadAction.nonBlocking<List<PaparazziTest>> {
+            val result = mutableListOf<PaparazziTest>()
+
+            ModuleManager.getInstance(project).modules.flatMap { module ->
+                val scope = module.moduleContentScope
+
+                FileTypeIndex
+                    .processFiles(KotlinFileType.INSTANCE, { vFile ->
+                        if (vFile.name.endsWith("Test.kt")) {
+                            vFile.findPsiFile(project)
+                                ?.let { extractTestsFromFile(it) }
+                                ?.let { result.addAll(it) }
+                        }
+                        true
+                    }, scope)
+                result
+            }
+        }
+            .expireWith(project)
+            .finishOnUiThread(ModalityState.any()) { tests ->
+                registry.update(tests)
+                pendingTask?.cancel(true)
             }
             .submit(AppExecutorUtil.getAppExecutorService())
     }
@@ -115,20 +150,8 @@ object PaparazziIndexer {
         annotationEntries.any { it.shortName?.asString() == "Test" }
 
     private fun hasPaparazziFieldKt(ktClass: KtClass): Boolean {
-        return ktClass.getProperties().any { property ->
-            val isPaparazziType = property.typeReference?.text?.contains("Paparazzi") == true ||
-                    property.initializer?.text?.contains("Paparazzi") == true
-
-            if (!isPaparazziType) return@any false
-
-            val hasRuleAnnotation = property.annotationEntries.any { annotation ->
-                val name = annotation.shortName?.asString()
-                if (name != "Rule") return@any false
-
-                val useSite = annotation.useSiteTarget?.getAnnotationUseSiteTarget()
-                useSite == null || useSite.renderName == "get" || useSite.renderName == "field"
-            }
-            hasRuleAnnotation
+        return ktClass.superTypeListEntries.any { entry ->
+            entry.typeAsUserType?.referencedName == "PaparazziBaseTest"
         }
     }
 
