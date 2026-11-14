@@ -84,6 +84,7 @@ snapshot-тестирования UI-компонентов Android от Cash Ap
 git clone https://github.com/NikCapko/paparazzi_plugin.git
 cd paparazzi_plugin
 ./gradlew buildPlugin
+```
 
 Собранный плагин будет находиться в `build/distributions/`
 
