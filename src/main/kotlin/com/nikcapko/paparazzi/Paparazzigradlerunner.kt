@@ -24,7 +24,6 @@ object PaparazziGradleRunner {
                 project = project,
                 tests = moduleTests,
                 task = verifyTask(project, moduleTests.first().gradleModulePath)
-                // ❗ без --tests
             )
         }
     }
@@ -41,12 +40,12 @@ object PaparazziGradleRunner {
         // Помечаем все тесты как RUNNING
         allTests.forEach { registry.setStatus(it, TestStatus.RUNNING) }
 
+        val suffix = PaparazziSettings.getInstance(project).state.taskSuffix
         val settings = ExternalSystemTaskExecutionSettings().apply {
             externalProjectPath = project.basePath
-            val suffix = PaparazziSettings.getInstance(project).state.taskSuffix
             taskNames = listOf("verifyPaparazzi$suffix")
             vmOptions = ""
-            scriptParameters = ""  // если нужны extraArgs, можно добавить
+            scriptParameters = ""
             externalSystemIdString = "GRADLE"
         }
 
@@ -57,80 +56,16 @@ object PaparazziGradleRunner {
             ProjectSystemId("GRADLE"),
             object : TaskCallback {
                 override fun onSuccess() {
-                    allTests.forEach { registry.setStatus(it, TestStatus.PASSED) }
+                    updateStatusesFromXml(project, allTests)
                 }
 
                 override fun onFailure() {
-                    updateStatusesForAllModules(project)
+                    updateStatusesFromXml(project, allTests)
                 }
             },
             ProgressExecutionMode.IN_BACKGROUND_ASYNC,
             false
         )
-    }
-
-    fun updateStatusesForAllModules(project: Project) {
-        val registry = project.getService(PaparazziTestRegistry::class.java)
-        val allTests = registry.allTests
-        if (allTests.isEmpty()) return
-
-        val projectRoot = Paths.get(project.basePath ?: return)
-
-        // Группируем тесты по модулю
-        val testsByModule = allTests.groupBy { it.gradleModulePath }
-
-        testsByModule.forEach { (modulePath, moduleTests) ->
-            val moduleDir = projectRoot.resolve(modulePath.removePrefix(":").replace(':', '/'))
-
-            // Проверяем стандартный путь отчетов Gradle для unit test debug
-            val suffix = PaparazziSettings.getInstance(project).state.taskSuffix
-            val reportsDir = moduleDir.resolve("build/test-results/test${suffix}UnitTest")
-            if (!Files.exists(reportsDir)) {
-                // Если нет папки отчетов, все UNKNOWN
-                moduleTests.forEach { registry.setStatus(it, TestStatus.UNKNOWN) }
-                return@forEach
-            }
-
-            moduleTests.forEach { test ->
-                val xmlFile = reportsDir.resolve("TEST-${test.fqClassName}.xml")
-                if (!Files.exists(xmlFile)) {
-                    registry.setStatus(test, TestStatus.UNKNOWN)
-                    return@forEach
-                }
-
-                try {
-                    val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile.toFile())
-                    doc.documentElement.normalize()
-
-                    val testCases = doc.getElementsByTagName("testcase")
-                    var found = false
-                    for (i in 0 until testCases.length) {
-                        val node = testCases.item(i) as? Element ?: continue
-                        if (node.getAttribute("name").startsWith(test.methodName)) {
-                            found = true
-                            val failedNodes = node.getElementsByTagName("failure")
-                            val skippedNodes = node.getElementsByTagName("skipped")
-
-                            val status = when {
-                                failedNodes.length > 0 -> TestStatus.FAILED
-                                skippedNodes.length > 0 -> TestStatus.UNKNOWN
-                                else -> TestStatus.PASSED
-                            }
-
-                            registry.setStatus(test, status)
-                            break
-                        }
-                    }
-
-                    if (!found) {
-                        registry.setStatus(test, TestStatus.UNKNOWN)
-                    }
-                } catch (e: Exception) {
-                    registry.setStatus(test, TestStatus.UNKNOWN)
-                    e.printStackTrace()
-                }
-            }
-        }
     }
 
     /**
@@ -146,8 +81,6 @@ object PaparazziGradleRunner {
             )
         }
     }
-
-    // ------------------------------------------------------------------
 
     private fun run(
         project: Project,
@@ -176,16 +109,101 @@ object PaparazziGradleRunner {
             ProjectSystemId("GRADLE"),
             object : TaskCallback {
                 override fun onSuccess() {
-                    tests.forEach { registry.setStatus(it, TestStatus.PASSED) }
+                    updateStatusesFromXml(project, tests)
                 }
 
                 override fun onFailure() {
-                    tests.forEach { registry.setStatus(it, TestStatus.FAILED) }
+                    updateStatusesFromXml(project, tests)
                 }
             },
             ProgressExecutionMode.IN_BACKGROUND_ASYNC,
             false
         )
+    }
+
+    /**
+     * Парсит XML-отчёты Gradle и обновляет статусы тестов.
+     */
+    private fun updateStatusesFromXml(project: Project, tests: List<PaparazziTest>) {
+        val registry = project.getService(PaparazziTestRegistry::class.java)
+        val projectRoot = Paths.get(project.basePath ?: return)
+        val suffix = PaparazziSettings.getInstance(project).state.taskSuffix
+
+        // Группируем тесты по модулю
+        val testsByModule = tests.groupBy { it.gradleModulePath }
+
+        testsByModule.forEach { (modulePath, moduleTests) ->
+            val moduleDir = projectRoot.resolve(modulePath.removePrefix(":").replace(':', '/'))
+
+            // Путь к отчётам с учётом суффикса
+            val reportsDir = moduleDir.resolve("build/test-results/test${suffix}UnitTest")
+
+            if (!Files.exists(reportsDir)) {
+                // Если нет папки отчётов, все тесты UNKNOWN
+                moduleTests.forEach { registry.setStatus(it, TestStatus.UNKNOWN) }
+                return@forEach
+            }
+
+            // Группируем тесты по классу для эффективного поиска XML
+            val testsByClass = moduleTests.groupBy { it.fqClassName }
+
+            testsByClass.forEach { (fqClassName, classTests) ->
+                val xmlFile = reportsDir.resolve("TEST-$fqClassName.xml")
+
+                if (!Files.exists(xmlFile)) {
+                    // Если XML-файл не найден, тесты UNKNOWN
+                    classTests.forEach { registry.setStatus(it, TestStatus.UNKNOWN) }
+                    return@forEach
+                }
+
+                try {
+                    val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile.toFile())
+                    doc.documentElement.normalize()
+
+                    val testCases = doc.getElementsByTagName("testcase")
+
+                    classTests.forEach { test ->
+                        var found = false
+
+                        for (i in 0 until testCases.length) {
+                            val node = testCases.item(i) as? Element ?: continue
+                            val methodName = node.getAttribute("name")
+
+                            // Проверяем совпадение имени метода
+                            // Для параметризованных тестов имя может быть "methodName[0]", "methodName[1]"
+                            val matches = if (test.useParametrized) {
+                                methodName.startsWith(test.methodName)
+                            } else {
+                                methodName == test.methodName
+                            }
+
+                            if (matches) {
+                                found = true
+                                val failedNodes = node.getElementsByTagName("failure")
+                                val skippedNodes = node.getElementsByTagName("skipped")
+
+                                val status = when {
+                                    failedNodes.length > 0 -> TestStatus.FAILED
+                                    skippedNodes.length > 0 -> TestStatus.UNKNOWN
+                                    else -> TestStatus.PASSED
+                                }
+
+                                registry.setStatus(test, status)
+                                break
+                            }
+                        }
+
+                        if (!found) {
+                            registry.setStatus(test, TestStatus.UNKNOWN)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // При ошибке парсинга все тесты UNKNOWN
+                    classTests.forEach { registry.setStatus(it, TestStatus.UNKNOWN) }
+                    e.printStackTrace()
+                }
+            }
+        }
     }
 
     private fun verifyTask(project: Project, module: String): String {
