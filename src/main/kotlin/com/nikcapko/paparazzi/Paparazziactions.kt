@@ -118,31 +118,31 @@ class RefreshTestsAction : AnAction() {
 }
 
 // ---------------------------------------------------------------------------
-// Развернуть дерево тестов
+// Развернуть все узлы дерева
 // ---------------------------------------------------------------------------
-class ExpandAllTestsAction : AnAction(
-    /* text = */ "Expand All",
-    /* description = */"Expand all nodes",
-    /* icon = */AllIcons.Actions.Expandall,
-) {
-
+class ExpandAllTestsAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
-        val tree = e.getData(PaparazziDataKeys.TREE) ?: return
+        // Напрямую запрашиваем Tree через DataKey
+        val tree = e.getData(PaparazziDataKeys.TREE) as? Tree ?: return
         TreeUtil.expandAll(tree)
+    }
+
+    override fun update(e: AnActionEvent) {
+        // Активна, только если Tree доступен в контексте
+        e.presentation.isEnabled = e.getData(PaparazziDataKeys.TREE) != null
     }
 }
 
 // ---------------------------------------------------------------------------
-// Свернуть дерево тестов
+// Свернуть все узлы дерева
 // ---------------------------------------------------------------------------
-class CollapseAllTestsAction : AnAction(
-    /* text = */ "Collapse All",
-    /* description = */ "Collapse all nodes",
-    /* icon = */ AllIcons.Actions.Collapseall,
-) {
-
+class CollapseAllTestsAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
-        val tree = e.getData(PaparazziDataKeys.TREE) ?: return
-        TreeUtil.collapseAll(tree, 0)
+        val tree = e.getData(PaparazziDataKeys.TREE) as? Tree ?: return
+        TreeUtil.collapseAll(tree, 1) // Сворачиваем все, кроме корня (уровень 1)
+    }
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = e.getData(PaparazziDataKeys.TREE) != null
     }
 }

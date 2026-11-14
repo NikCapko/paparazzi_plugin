@@ -140,6 +140,7 @@ class PaparazziPanel(private val project: Project) : JPanel(BorderLayout()), Dat
 
     override fun getData(dataId: String): Any? {
         return when {
+            PaparazziDataKeys.TREE.`is`(dataId) -> tree
             PaparazziDataKeys.SELECTED_TESTS.`is`(dataId) -> getSelectedTests()
             else -> null
         }
