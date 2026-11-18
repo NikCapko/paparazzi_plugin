@@ -70,7 +70,7 @@ data class PaparazziTest(
     }
 
     fun loadFailureDiffs(projectRoot: Path): List<Pair<BufferedImage, String>> {
-        val baseName = "${fqClassName.replace('.', '_')}_${methodName.replace(" ", "_")}"
+        val baseName = "${fqClassName.substringBeforeLast(".")}_${className}_${methodName.replace(" ", "_")}"
 
         val failuresDir = projectRoot
             .resolve(gradleModulePath.removePrefix(":").replace(':', '/'))
