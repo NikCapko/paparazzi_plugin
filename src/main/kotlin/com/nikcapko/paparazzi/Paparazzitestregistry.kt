@@ -44,10 +44,18 @@ data class PaparazziTest(
 
     val displayName: String get() = methodName
     val className: String get() = fqClassName.substringAfterLast('.')
+    val packageName: String get() = fqClassName.substringBeforeLast('.')
+
+    /**
+     * Формирует базовое имя snapshot-файла в формате Paparazzi:
+     * {package}_{ClassName}_{methodName}
+     *
+     * Пример: com.example.ui_HomeTest_homeScreenTest
+     */
+    private val snapshotBaseName: String
+        get() = "${packageName}_${className}_${methodName.replace(" ", "_")}"
 
     fun referenceSnapshots(projectRoot: Path): List<Pair<BufferedImage, String>> {
-        val baseName = "${fqClassName.substringBeforeLast(".")}_${className}_${methodName.replace(" ", "_")}"
-
         val imagesDir = projectRoot
             .resolve(gradleModulePath.removePrefix(":").replace(':', '/'))
             .resolve("src/test/snapshots/images")
@@ -57,21 +65,19 @@ data class PaparazziTest(
 
         return imagesDir
             .listFiles { _, name ->
-                name.startsWith(baseName) && name.endsWith(".png")
+                name.startsWith(snapshotBaseName) && name.endsWith(".png")
             }
             ?.sortedWith { file, file1 -> file.toPath().compareTo(file1.toPath()) }
             ?.mapNotNull {
                 val img = ImageIO.read(it.toPath().toFile()) ?: return@mapNotNull null
-                // Очищаем имя файла от базового префикса, чтобы оставить только суффикс (например, "[0]")
-                val suffix = it.name.removePrefix(baseName).removeSuffix(".png")
+                // Извлекаем суффикс (например, "[0]" для параметризованных тестов)
+                val suffix = it.name.removePrefix(snapshotBaseName).removeSuffix(".png")
                 img to suffix
             }
             ?: emptyList()
     }
 
     fun loadFailureDiffs(projectRoot: Path): List<Pair<BufferedImage, String>> {
-        val baseName = "${fqClassName.substringBeforeLast(".")}_${className}_${methodName.replace(" ", "_")}"
-
         val failuresDir = projectRoot
             .resolve(gradleModulePath.removePrefix(":").replace(':', '/'))
             .resolve("build/paparazzi/failures")
@@ -81,14 +87,14 @@ data class PaparazziTest(
         return Files.list(failuresDir)
             .filter { path ->
                 val name = path.fileName.toString()
-                name.startsWith("delta-") && name.contains(baseName) && name.endsWith(".png")
+                name.startsWith("delta-") && name.contains(snapshotBaseName) && name.endsWith(".png")
             }
             .toList()
             .mapNotNull { path ->
                 val img = ImageIO.read(path.toFile()) ?: return@mapNotNull null
                 val suffix = path.name
                     .removePrefix("delta-")
-                    .removePrefix(baseName)
+                    .removePrefix(snapshotBaseName)
                     .removeSuffix(".png")
                 img to suffix
             }
